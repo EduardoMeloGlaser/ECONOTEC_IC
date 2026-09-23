@@ -14,7 +14,7 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
     prompt_completo = f"Contexto Econômico Atual:\n{contexto}\n\nPergunta do Usuário: {prompt}" if contexto else prompt
 
     payload = {
-        "model": "llama-3.2-3b-preview",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {"role": "user", "content": prompt_completo}
         ]
