@@ -1,7 +1,7 @@
 import streamlit as st
 import asyncio
 from api_client import obter_selic_atual
-from llm_client import gerar_resposta
+from llm_client import ask_llama
 
 st.set_page_config(page_title="Assistente Econômico", page_icon="📈")
 st.title("📈 Assistente Econômico Inteligente")
@@ -29,7 +29,7 @@ if prompt := st.chat_input("Ex: Qual é a taxa Selic atual e o que ela significa
             contexto = f"Selic Atual: {dados_selic.valor}% na data {dados_selic.data}" if dados_selic else "Dados indisponíveis."
 
             # 2. Envia tudo para o LLM
-            resposta = asyncio.run(gerar_resposta(prompt, contexto))
+            resposta = asyncio.run(ask_llama(prompt, contexto))
             
             st.markdown(resposta)
             st.session_state.messages.append({"role": "assistant", "content": resposta})
