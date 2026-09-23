@@ -25,11 +25,14 @@ if prompt := st.chat_input("Ex: Qual é a taxa Selic atual e o que ela significa
     with st.chat_message("assistant"):
         with st.spinner("Buscando dados das APIs e consultando Llama 3.2..."):
             # 1. Busca os dados reais das APIs
-            dados_selic = asyncio.run(obter_selic_atual())
-            contexto = f"Selic Atual: {dados_selic.valor}% na data {dados_selic.data}" if dados_selic else "Dados indisponíveis."
+            try:
+                dados_selic = asyncio.run(obter_selic_atual())
+                contexto = f"Selic Atual: {dados_selic.valor}% na data {dados_selic.data}" if dados_selic else "Dados indisponíveis."
+            except Exception as e:
+                contexto = "Dados da Selic indisponíveis no momento."
 
-            # 2. Envia tudo para o LLM
-            resposta = asyncio.run(ask_llama(prompt, contexto))
+            # 2. Envia a pergunta e o contexto para o LLM (chamada direta síncrona)
+            resposta = ask_llama(prompt, contexto)
             
             st.markdown(resposta)
             st.session_state.messages.append({"role": "assistant", "content": resposta})
