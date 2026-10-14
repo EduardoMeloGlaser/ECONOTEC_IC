@@ -8,7 +8,7 @@ st.set_page_config(page_title="Assistente Econômico", page_icon="📈", layout=
 
 st.title("📈 Assistente Econômico & Notícias Financeiras")
 
-# Criando 2 colunas principais conforme a imagem
+# Criando 2 colunas com a mesma proporção
 col_noticias, col_chat = st.columns([1, 1], gap="large")
 
 # ==========================================
@@ -16,13 +16,14 @@ col_noticias, col_chat = st.columns([1, 1], gap="large")
 # ==========================================
 with col_noticias:
     st.header("📰 Últimas Notícias Financeiras")
-    st.write("Acompanhe as principais manchetes em tempo real:")
     
+    # Busca de notícias
     with st.spinner("Carregando notícias..."):
         noticias = obter_noticias_financeiras(limite=6)
     
-    # Exibe as notícias em um container com rolagem (scrollable container)
-    with st.container(height=550):
+    # Container com altura fixa ajustada para alinhar exatamente com a coluna do Chat
+    with st.container(height=580):
+        st.caption("Acompanhe as principais manchetes em tempo real:")
         if noticias:
             for item in noticias:
                 with st.expander(f"📌 {item.titulo}", expanded=False):
@@ -32,7 +33,7 @@ with col_noticias:
             st.info("Nenhuma notícia encontrada no momento.")
 
 # ==========================================
-# COLUNA DA DIREITA: Chat IA que já existe
+# COLUNA DA DIREITA: Chat IA
 # ==========================================
 with col_chat:
     st.header("💬 Chat de Inteligência Financeira")
@@ -41,24 +42,21 @@ with col_chat:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Container scrollável para o chat
-    chat_container = st.container(height=450)
+    # Container scrollável para as mensagens do Chat (altura alinhada com o bloco da esquerda)
+    chat_container = st.container(height=510)
 
-    # Exibir histórico na tela dentro do container
+    # Exibir histórico dentro do container
     with chat_container:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    # Capturar entrada do usuário
+    # Entrada do usuário posicionada diretamente abaixo do container de mensagens
     if prompt := st.chat_input("Ex: Qual é a taxa Selic atual e o que ela significa?"):
-        # Salva e exibe mensagem do usuário
         st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Rerenderiza para exibir imediatamente
         st.rerun()
 
-    # Processamento da resposta da IA (se a última mensagem for do usuário)
+    # Processamento do LLM
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
         prompt_atual = st.session_state.messages[-1]["content"]
         
