@@ -8,7 +8,7 @@ st.set_page_config(page_title="Assistente Econômico", page_icon="📈", layout=
 
 st.title("📈 Assistente Econômico & Notícias Financeiras")
 
-# Criando 2 colunas com a mesma proporção
+# Criando 2 colunas com proporções iguais
 col_noticias, col_chat = st.columns([1, 1], gap="large")
 
 # ==========================================
@@ -19,21 +19,26 @@ with col_noticias:
     
     # Busca de notícias
     with st.spinner("Carregando notícias..."):
-        noticias = obter_noticias_financeiras(limite=6)
+        try:
+            noticias = asyncio.run(obter_noticias_financeiras(limite=6))
+        except Exception as e:
+            noticias = []
     
-    # Container com altura fixa ajustada para alinhar exatamente com a coluna do Chat
+    # Container com altura fixa ajustada para alinhar com a coluna do Chat
     with st.container(height=580):
         st.caption("Acompanhe as principais manchetes em tempo real:")
         if noticias:
             for item in noticias:
                 with st.expander(f"📌 {item.titulo}", expanded=False):
                     st.caption(f"Fonte: {item.fonte} | {item.data_publicacao}")
+                    # Exibe o resumo extraído do feed
+                    st.write(item.resumo)
                     st.markdown(f"[🔗 Ler matéria completa]({item.link})")
         else:
             st.info("Nenhuma notícia encontrada no momento.")
 
 # ==========================================
-# COLUNA DA DIREITA: Chat IA
+# COLUNA DA DIREITA: Chat IA que já existe
 # ==========================================
 with col_chat:
     st.header("💬 Chat de Inteligência Financeira")
@@ -42,7 +47,7 @@ with col_chat:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Container scrollável para as mensagens do Chat (altura alinhada com o bloco da esquerda)
+    # Container scrollável para as mensagens do Chat (com altura ajustada para alinhar com as notícias)
     chat_container = st.container(height=510)
 
     # Exibir histórico dentro do container
@@ -51,12 +56,12 @@ with col_chat:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    # Entrada do usuário posicionada diretamente abaixo do container de mensagens
+    # Entrada de texto do usuário
     if prompt := st.chat_input("Ex: Qual é a taxa Selic atual e o que ela significa?"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.rerun()
 
-    # Processamento do LLM
+    # Processamento e resposta da IA
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
         prompt_atual = st.session_state.messages[-1]["content"]
         
