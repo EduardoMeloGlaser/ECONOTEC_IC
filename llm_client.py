@@ -26,12 +26,17 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
         "messages": [
             {
                 "role": "system", 
-                "content": "Você é um especialista em macroeconomia e mercado financeiro brasileiro. Responda de forma clara, didática, objetiva e resumida."
+                "content": (
+                    "Você é um especialista em macroeconomia e mercado financeiro brasileiro. "
+                    "Seja extremamente objetivo, direto ao ponto e didático. "
+                    "Evite introduções longas ou fórmulas matemáticas extensas para não cortar a resposta. "
+                    "Apresente os resultados e comparações de forma sintética com tópicos claros."
+                )
             },
             {"role": "user", "content": prompt_completo}
         ],
-        "temperature": 0.5,
-        "max_tokens": 800  # Limita a resposta para evitar o erro 429 do limite OTPM da Groq
+        "temperature": 0.4,
+        "max_tokens": 1200  # Aumentado para evitar corte de respostas sem estourar o limite de minuto
     }
     
     try:
