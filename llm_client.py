@@ -22,8 +22,7 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
     prompt_completo = f"Contexto Econômico Atual:\n{contexto}\n\nPergunta do Usuário: {prompt}" if contexto else prompt
 
     payload = {
-        # ID exato retornado na sua consulta de modelos da Groq
-        "model": "qwen3.8-27b",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
             {
                 "role": "system", 
