@@ -22,16 +22,16 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
     prompt_completo = f"Contexto Econômico Atual:\n{contexto}\n\nPergunta do Usuário: {prompt}" if contexto else prompt
 
     payload = {
-        # Modelo verificado e ativo na sua conta Groq
         "model": "qwen/qwen3.8-27b",
         "messages": [
             {
                 "role": "system", 
-                "content": "Você é um especialista em macroeconomia e mercado financeiro brasileiro. Responda de forma clara, didática e direta."
+                "content": "Você é um especialista em macroeconomia e mercado financeiro brasileiro. Responda de forma clara, didática, objetiva e resumida."
             },
             {"role": "user", "content": prompt_completo}
         ],
-        "temperature": 0.5
+        "temperature": 0.5,
+        "max_tokens": 800  # Limita a resposta para evitar o erro 429 do limite OTPM da Groq
     }
     
     try:

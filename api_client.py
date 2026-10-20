@@ -111,3 +111,20 @@ async def obter_noticias_financeiras(limite: int = 6) -> List[Noticia]:
                 break
                 
     return noticias
+
+async def obter_historico_indicador(codigo_serie: int, ultimos_n: int = 12) -> Optional[pd.DataFrame]:
+    """Busca os últimos N registros de qualquer série do SGS do Banco Central."""
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo_serie}/dados/ultimos/{ultimos_n}?formato=json"
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.get(url)
+            if response.status_code == 200:
+                df = pd.DataFrame(response.json())
+                df["valor"] = df["valor"].astype(float)
+                df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
+                df = df.sort_values("data")
+                return df
+        except Exception as e:
+            print(f"Erro ao buscar série {codigo_serie}: {e}")
+    return None
