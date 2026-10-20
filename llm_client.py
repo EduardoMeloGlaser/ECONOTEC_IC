@@ -11,7 +11,7 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
     api_key = get_groq_api_key()
     
     if not api_key:
-        return "⚠️ Erro: A chave GROQ_API_KEY não foi encontrada nas Secrets do Streamlit."
+        return "⚠️ Erro: A chave GROQ_API_KEY não foi encontrada nas Secrets do Streamlit ou nas variáveis de ambiente."
 
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
@@ -22,10 +22,15 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
     prompt_completo = f"Contexto Econômico Atual:\n{contexto}\n\nPergunta do Usuário: {prompt}" if contexto else prompt
 
     payload = {
-        "model": "qwen/qwen3.8-27b",
+        "model": "llama-3.3-70b-versatile",
         "messages": [
+            {
+                "role": "system", 
+                "content": "Você é um especialista em macroeconomia e mercado financeiro brasileiro. Responda de forma clara, didática e direta."
+            },
             {"role": "user", "content": prompt_completo}
-        ]
+        ],
+        "temperature": 0.5
     }
     
     try:
@@ -34,7 +39,7 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
             data = response.json()
             
             if response.status_code != 200:
-                msg_erro = data.get('error', {}).get('message', 'Erro desconhecido na API.')
+                msg_erro = data.get('error', {}).get('message', 'Erro desconhecido na API da Groq.')
                 return f"⚠️ Erro ao consultar a Groq ({response.status_code}): {msg_erro}"
                 
             return data["choices"][0]["message"]["content"]

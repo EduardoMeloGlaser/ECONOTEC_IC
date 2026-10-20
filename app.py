@@ -1,79 +1,106 @@
 import streamlit as st
 import asyncio
-from api_client import obter_selic_atual, obter_noticias_financeiras
+from api_client import obter_selic_atual, obter_historico_selic, obter_noticias_financeiras
 from llm_client import ask_llama
 
-# Configuração da página para ocupar a largura inteira (wide)
-st.set_page_config(page_title="Assistente Econômico", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Assistente Econômico & Relatórios", page_icon="📈", layout="wide")
 
-st.title("📈 Assistente Econômico & Notícias Financeiras")
+st.title("📈 Assistente Econômico & Painel Financeiro")
 
-# Criando 2 colunas com proporções iguais
-col_noticias, col_chat = st.columns([1, 1], gap="large")
+# Criando 2 colunas principais
+col_painel, col_chat = st.columns([1, 1], gap="large")
 
 # ==========================================
-# COLUNA DA ESQUERDA: Últimas Notícias Financeiras
+# COLUNA DA ESQUERDA: Relatório & Indicadores / Notícias
 # ==========================================
-with col_noticias:
-    st.header("📰 Últimas Notícias Financeiras")
+with col_painel:
+    tab_relatorio, tab_noticias = st.tabs(["📊 Relatório Dinâmico", "📰 Últimas Notícias"])
     
-    # Busca de notícias
-    with st.spinner("Carregando notícias..."):
+    with tab_relatorio:
+        st.subheader("📋 Painel de Indicadores")
+        
+        # Carregamento dos dados da Selic para o relatório
         try:
-            noticias = asyncio.run(obter_noticias_financeiras(limite=6))
-        except Exception as e:
-            noticias = []
-    
-    # Container com altura fixa ajustada para alinhar com a coluna do Chat
-    with st.container(height=580):
-        st.caption("Acompanhe as principais manchetes em tempo real:")
-        if noticias:
-            for item in noticias:
-                with st.expander(f"📌 {item.titulo}", expanded=False):
-                    st.caption(f"Fonte: {item.fonte} | {item.data_publicacao}")
-                    # Exibe o resumo extraído do feed
-                    st.write(item.resumo)
-                    st.markdown(f"[🔗 Ler matéria completa]({item.link})")
+            selic_atual = asyncio.run(obter_selic_atual())
+            df_selic = asyncio.run(obter_historico_selic(ultimos_n=12))
+        except Exception:
+            selic_atual = None
+            df_selic = None
+
+        if selic_atual:
+            c1, c2 = st.columns(2)
+            c1.metric(label="Taxa Selic Atual", value=f"{selic_atual.valor}%")
+            c2.metric(label="Última Atualização", value=selic_atual.data)
+        
+        st.markdown("---")
+        
+        # Exibição do Gráfico Histórico
+        if df_selic is not None and not df_selic.empty:
+            st.markdown("### 📈 Histórico Recente da Taxa Selic")
+            st.line_chart(df_selic.set_index("data")["valor"], height=250)
+            st.caption("Fonte: Banco Central do Brasil (SGS - Série 1178)")
         else:
-            st.info("Nenhuma notícia encontrada no momento.")
+            st.info("Carregando histórico do Banco Central...")
+
+        # Área reservada para destaques da última análise da IA
+        if "ultimo_resumo" in st.session_state:
+            st.markdown("---")
+            st.markdown("### 📝 Destaque da Análise do Assistente")
+            st.info(st.session_state.ultimo_resumo)
+
+    with tab_noticias:
+        st.subheader("📰 Manchetes Financeiras")
+        with st.spinner("Carregando notícias..."):
+            try:
+                noticias = asyncio.run(obter_noticias_financeiras(limite=6))
+            except Exception:
+                noticias = []
+        
+        with st.container(height=500):
+            if noticias:
+                for item in noticias:
+                    with st.expander(f"📌 {item.titulo}", expanded=False):
+                        st.caption(f"Fonte: {item.fonte} | {item.data_publicacao}")
+                        st.write(item.resumo)
+                        st.markdown(f"[🔗 Ler matéria completa]({item.link})")
+            else:
+                st.warning("Não foi possível carregar as notícias no momento.")
 
 # ==========================================
-# COLUNA DA DIREITA: Chat IA que já existe
+# COLUNA DA DIREITA: Chatbot com IA
 # ==========================================
 with col_chat:
     st.header("💬 Chat de Inteligência Financeira")
     
-    # Inicializar histórico do Chat
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Container scrollável para as mensagens do Chat (com altura ajustada para alinhar com as notícias)
-    chat_container = st.container(height=510)
+    chat_container = st.container(height=500)
 
-    # Exibir histórico dentro do container
     with chat_container:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    # Entrada de texto do usuário
-    if prompt := st.chat_input("Ex: Qual é a taxa Selic atual e o que ela significa?"):
+    if prompt := st.chat_input("Ex: Qual é a Selic hoje e qual o impacto nos investimentos?"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.rerun()
 
-    # Processamento e resposta da IA
     if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
         prompt_atual = st.session_state.messages[-1]["content"]
         
         with chat_container:
             with st.chat_message("assistant"):
-                with st.spinner("Buscando dados das APIs e consultando LLM..."):
+                with st.spinner("Consultando dados oficiais e processando resposta..."):
                     try:
                         dados_selic = asyncio.run(obter_selic_atual())
-                        contexto = f"Selic Atual: {dados_selic.valor}% na data {dados_selic.data}" if dados_selic else "Dados indisponíveis."
-                    except Exception as e:
+                        contexto = f"Selic Atual: {dados_selic.valor}% na data {dados_selic.data}" if dados_selic else "Dados da Selic indisponíveis."
+                    except Exception:
                         contexto = "Dados da Selic indisponíveis no momento."
 
                     resposta = ask_llama(prompt_atual, contexto)
                     st.markdown(resposta)
+                    
+                    # Salva no histórico do chat e guarda um trecho para o relatório dinâmico
                     st.session_state.messages.append({"role": "assistant", "content": resposta})
+                    st.session_state.ultimo_resumo = resposta[:300] + "..." if len(resposta) > 300 else resposta
