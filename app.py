@@ -1,15 +1,47 @@
 import streamlit as st
-import asyncio
-from api_client import obter_selic_atual, obter_historico_indicador, obter_noticias_financeiras
+import httpx
+import pandas as pd
+from api_client import obter_noticias_financeiras
 from llm_client import ask_llama
 
+# Configuração da página
 st.set_page_config(page_title="Assistente Econômico & Painel Financeiro", page_icon="📈", layout="wide")
 st.title("📈 Assistente Econômico & Painel Financeiro")
 
-col_painel, col_chat = st.columns([1, 1], gap="large")
+# ==========================================
+# FUNÇÕES DE BUSCA COM CACHE (Evita travamentos e lentidão)
+# ==========================================
+@st.cache_data(ttl=3600)  # Guarda o resultado em cache por 1 hora
+def carregar_selic_atual():
+    url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.1178/dados/ultimos/1?formato=json"
+    try:
+        response = httpx.get(url, timeout=5.0)
+        if response.status_code == 200:
+            data = response.json()[0]
+            return float(data["valor"]), data["data"]
+    except Exception as e:
+        print(f"Erro ao buscar Selic atual: {e}")
+    return None, None
 
-# Identifica qual indicador carregar com base na última mensagem do utilizador
-indicador_codigo = 1178 # Padrão: Selic
+@st.cache_data(ttl=3600)
+def carregar_historico_indicador(codigo_serie: int, ultimos_n: int = 12):
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo_serie}/dados/ultimos/{ultimos_n}?formato=json"
+    try:
+        response = httpx.get(url, timeout=5.0)
+        if response.status_code == 200:
+            df = pd.DataFrame(response.json())
+            df["valor"] = df["valor"].astype(float)
+            df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
+            df = df.sort_values("data")
+            return df
+    except Exception as e:
+        print(f"Erro ao buscar histórico do indicador {codigo_serie}: {e}")
+    return None
+
+# ==========================================
+# DEFINIÇÃO DO INDICADOR COM BASE NO CHAT
+# ==========================================
+indicador_codigo = 1178  # Padrão: Selic
 indicador_nome = "Taxa Selic"
 
 if "messages" in st.session_state and st.session_state.messages:
@@ -24,32 +56,40 @@ if "messages" in st.session_state and st.session_state.messages:
         indicador_codigo = 195
         indicador_nome = "Rendimento Poupança (%)"
 
+# ==========================================
+# LAYOUT EM 2 COLUNAS
+# ==========================================
+col_painel, col_chat = st.columns([1, 1], gap="large")
+
+# ------------------------------------------
+# COLUNA DA ESQUERDA: RELATÓRIO & NOTÍCIAS
+# ------------------------------------------
 with col_painel:
     tab_relatorio, tab_noticias = st.tabs(["📊 Relatório Dinâmico", "📰 Últimas Notícias"])
     
     with tab_relatorio:
         st.subheader(f"📋 Painel de Indicadores — {indicador_nome}")
         
-        try:
-            selic_atual = asyncio.run(obter_selic_atual())
-            df_indicador = asyncio.run(obter_historico_indicador(indicador_codigo, ultimos_n=12))
-        except Exception:
-            selic_atual = None
-            df_indicador = None
-
-        if selic_atual:
+        # Busca dados da Selic com cache
+        valor_selic, data_selic = carregar_selic_atual()
+        if valor_selic is not None:
             c1, c2 = st.columns(2)
-            c1.metric(label="Taxa Selic Atual", value=f"{selic_atual.valor}%")
-            c2.metric(label="Última Atualização", value=selic_atual.data)
+            c1.metric(label="Taxa Selic Atual", value=f"{valor_selic}%")
+            c2.metric(label="Última Atualização", value=data_selic)
+        else:
+            st.warning("Não foi possível carregar a Selic atual do Banco Central.")
         
         st.markdown("---")
+        
+        # Busca histórico do indicador selecionado com cache
+        df_indicador = carregar_historico_indicador(indicador_codigo, ultimos_n=12)
         
         if df_indicador is not None and not df_indicador.empty:
             st.markdown(f"### 📈 Histórico Recente: {indicador_nome}")
             st.line_chart(df_indicador.set_index("data")["valor"], height=250)
             st.caption("Fonte: Banco Central do Brasil (SGS)")
         else:
-            st.info("Carregando histórico do indicador...")
+            st.info("Histórico indisponível no momento.")
 
         if "ultimo_resumo" in st.session_state:
             st.markdown("---")
@@ -57,5 +97,56 @@ with col_painel:
             st.info(st.session_state.ultimo_resumo)
 
     with tab_noticias:
-        # Conteúdo das Notícias...
-        pass
+        st.subheader("📰 Manchetes Financeiras")
+        with st.spinner("Carregando notícias..."):
+            try:
+                # Caso a busca de notícias ainda seja assíncrona
+                import asyncio
+                noticias = asyncio.run(obter_noticias_financeiras(limite=6))
+            except Exception:
+                noticias = []
+        
+        with st.container(height=500):
+            if noticias:
+                for item in noticias:
+                    with st.expander(f"📌 {item.titulo}", expanded=False):
+                        st.caption(f"Fonte: {item.fonte} | {item.data_publicacao}")
+                        st.write(item.resumo)
+                        st.markdown(f"[🔗 Ler matéria completa]({item.link})")
+            else:
+                st.warning("Não foi possível carregar as notícias no momento.")
+
+# ------------------------------------------
+# COLUNA DA DIREITA: CHATBOT
+# ------------------------------------------
+with col_chat:
+    st.header("💬 Chat de Inteligência Financeira")
+    
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    chat_container = st.container(height=500)
+
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    if prompt := st.chat_input("Ex: Qual é a Selic hoje e qual o impacto nos investimentos?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.rerun()
+
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+        prompt_atual = st.session_state.messages[-1]["content"]
+        
+        with chat_container:
+            with st.chat_message("assistant"):
+                with st.spinner("Consultando IA e gerando resposta..."):
+                    contexto = f"Selic Atual: {valor_selic}% na data {data_selic}" if valor_selic else "Dados da Selic indisponíveis."
+
+                    resposta = ask_llama(prompt_atual, contexto)
+                    st.markdown(resposta)
+                    
+                    st.session_state.messages.append({"role": "assistant", "content": resposta})
+                    st.session_state.ultimo_resumo = resposta[:300] + "..." if len(resposta) > 300 else resposta
+                    st.rerun()
