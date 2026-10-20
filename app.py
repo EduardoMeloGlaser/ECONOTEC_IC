@@ -9,6 +9,16 @@ st.set_page_config(page_title="Assistente Econômico & Painel Financeiro", page_
 st.title("📈 Assistente Econômico & Painel Financeiro")
 
 # ==========================================
+# FUNÇÕES AUXILIARES DE CÁLCULO FINANCEIRO
+# ==========================================
+def calcular_acumulado_investimento(df: pd.DataFrame, valor_inicial: float = 10000.0) -> pd.DataFrame:
+    """Aplica o produto acumulado sobre a taxa para simular o crescimento do montante inicial em Reais (R$)."""
+    df_calc = df.copy()
+    df_calc["fator"] = 1 + (df_calc["valor"] / 100)
+    df_calc["Saldo (R$)"] = valor_inicial * df_calc["fator"].cumprod()
+    return df_calc
+
+# ==========================================
 # FUNÇÕES DE BUSCA COM CACHE (Evita travamentos e lentidão)
 # ==========================================
 @st.cache_data(ttl=3600)  # Guarda o resultado em cache por 1 hora
@@ -24,7 +34,7 @@ def carregar_selic_atual():
     return None, None
 
 @st.cache_data(ttl=3600)
-def carregar_historico_indicador(codigo_serie: int, ultimos_n: int = 12):
+def carregar_historico_indicador(codigo_serie: int, ultimos_n: int = 252):
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo_serie}/dados/ultimos/{ultimos_n}?formato=json"
     try:
         response = httpx.get(url, timeout=5.0)
@@ -39,10 +49,11 @@ def carregar_historico_indicador(codigo_serie: int, ultimos_n: int = 12):
     return None
 
 # ==========================================
-# DEFINIÇÃO DO INDICADOR COM BASE NO CHAT
+# DEFINIÇÃO DO INDICADOR E MODO COM BASE NO CHAT
 # ==========================================
 indicador_codigo = 1178  # Padrão: Selic
 indicador_nome = "Taxa Selic"
+ultima_msg = ""
 
 if "messages" in st.session_state and st.session_state.messages:
     ultima_msg = st.session_state.messages[-1]["content"].lower()
@@ -81,13 +92,20 @@ with col_painel:
         
         st.markdown("---")
         
-        # Busca histórico do indicador selecionado com cache
-        df_indicador = carregar_historico_indicador(indicador_codigo, ultimos_n=12)
+        # Busca ~1 ano útil de histórico para garantir visualização anual ampla
+        df_indicador = carregar_historico_indicador(indicador_codigo, ultimos_n=252)
         
         if df_indicador is not None and not df_indicador.empty:
-            st.markdown(f"### 📈 Histórico Recente: {indicador_nome}")
-            st.line_chart(df_indicador.set_index("data")["valor"], height=250)
-            st.caption("Fonte: Banco Central do Brasil (SGS)")
+            # Verifica se o usuário solicitou uma simulação de valor financeiro acumulado (ex: R$ 10.000)
+            if "10" in ultima_msg or "10000" in ultima_msg or "10.000" in ultima_msg or "renderia" in ultima_msg:
+                df_simulacao = calcular_acumulado_investimento(df_indicador, valor_inicial=10000.0)
+                st.markdown(f"### 📈 Simulação: Rendimento de R$ 10.000,00 ({indicador_nome})")
+                st.line_chart(df_simulacao.set_index("data")["Saldo (R$)"], height=280)
+                st.caption("Cálculo baseado no acúmulo das taxas informadas pelo Banco Central (SGS).")
+            else:
+                st.markdown(f"### 📈 Histórico Recente (12 Meses): {indicador_nome}")
+                st.line_chart(df_indicador.set_index("data")["valor"], height=250)
+                st.caption("Fonte: Banco Central do Brasil (SGS)")
         else:
             st.info("Histórico indisponível no momento.")
 
@@ -100,7 +118,6 @@ with col_painel:
         st.subheader("📰 Manchetes Financeiras")
         with st.spinner("Carregando notícias..."):
             try:
-                # Caso a busca de notícias ainda seja assíncrona
                 import asyncio
                 noticias = asyncio.run(obter_noticias_financeiras(limite=6))
             except Exception:
