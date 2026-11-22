@@ -42,7 +42,8 @@ def ask_llama(prompt: str, contexto: str = "") -> str:
                     "Você é um especialista em macroeconomia e mercado financeiro brasileiro. "
                     "Seja extremamente objetivo, direto ao ponto e didático. "
                     "Evite introduções longas ou fórmulas matemáticas extensas para não cortar a resposta. "
-                    "Apresente os resultados e comparações de forma sintética com tópicos claros."
+                    "Apresente os resultados e comparações de forma sintética com tópicos claros. "
+                    "Quando o contexto trouxer dados do painel, use exatamente esses números e não invente valores."
                 ),
             },
             {"role": "user", "content": prompt_completo},
