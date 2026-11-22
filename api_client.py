@@ -5,10 +5,12 @@ import pandas as pd
 from pydantic import BaseModel
 from typing import Optional, List
 
+
 class IndicadorEconomico(BaseModel):
     nome: str
     valor: float
     data: str
+
 
 class Noticia(BaseModel):
     titulo: str
@@ -17,15 +19,17 @@ class Noticia(BaseModel):
     data_publicacao: Optional[str] = None
     fonte: Optional[str] = None
 
+
 def limpar_html(texto: str) -> str:
     if not texto:
         return "Sem resumo disponível."
-    texto_limpo = re.sub(r'<[^>]+>', '', texto)
+    texto_limpo = re.sub(r"<[^>]+>", "", texto)
     return texto_limpo.strip()
+
 
 async def obter_selic_atual() -> Optional[IndicadorEconomico]:
     url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.1178/dados/ultimos/1?formato=json"
-    
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(url)
@@ -34,16 +38,17 @@ async def obter_selic_atual() -> Optional[IndicadorEconomico]:
                 return IndicadorEconomico(
                     nome="Taxa Selic",
                     valor=float(data["valor"]),
-                    data=data["data"]
+                    data=data["data"],
                 )
         except Exception as e:
             print(f"Erro ao obter Selic atual: {e}")
     return None
 
+
 async def obter_historico_indicador(codigo_serie: int, ultimos_n: int = 12) -> Optional[pd.DataFrame]:
     """Busca os últimos N registros de qualquer série do SGS do Banco Central."""
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo_serie}/dados/ultimos/{ultimos_n}?formato=json"
-    
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(url)
@@ -57,56 +62,62 @@ async def obter_historico_indicador(codigo_serie: int, ultimos_n: int = 12) -> O
             print(f"Erro ao buscar série {codigo_serie}: {e}")
     return None
 
+
+def _texto(item, tag: str, padrao: str = "") -> str:
+    elem = item.find(tag)
+    return elem.text.strip() if elem is not None and elem.text else padrao
+
+
 async def obter_noticias_financeiras(limite: int = 6) -> List[Noticia]:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
-    
+
     feeds = [
         ("Google News - Economia Brasil", "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=pt-BR&gl=BR&ceid=BR:pt-419"),
         ("InfoMoney - Mercado", "https://www.infomoney.com.br/mercados/feed/"),
-        ("Valor Econômico", "https://valor.globo.com/rss/financas/")
+        ("Valor Econômico", "https://valor.globo.com/rss/financas/"),
     ]
-    
+
     palavras_chave = [
         "ações", "bolsa", "ibovespa", "dólar", "selic", "juros", "inflação", "ipca",
-        "lucro", "balanço", "mercado", "banco", "fed", "tesouro", "fundo", "invest"
+        "lucro", "balanço", "mercado", "banco", "fed", "tesouro", "fundo", "invest",
     ]
-    
-    noticias = []
-    
+
+    # Distribui as vagas entre as fontes, para não vir tudo só do primeiro feed
+    por_feed = max(1, -(-limite // len(feeds)))  # divisão com arredondamento para cima
+    noticias: List[Noticia] = []
+
     async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=10.0) as client:
         for nome_fonte, url in feeds:
+            coletadas = 0
             try:
                 response = await client.get(url)
-                if response.status_code == 200:
-                    root = ET.fromstring(response.content)
-                    for item in root.findall(".//item"):
-                        titulo = item.find("title").text if item.find("title") is not None else ""
-                        link = item.find("link").text if item.find("link") is not None else "#"
-                        pub_date = item.find("pubDate").text if item.find("pubDate") is not None else ""
-                        
-                        desc_elem = item.find("description")
-                        raw_desc = desc_elem.text if desc_elem is not None else ""
-                        resumo_limpo = limpar_html(raw_desc)
+                if response.status_code != 200:
+                    continue
 
-                        texto_analise = f"{titulo} {resumo_limpo}".lower()
-                        if any(palavra in texto_analise for palavra in palavras_chave) or "google" in nome_fonte.lower():
-                            noticias.append(
-                                Noticia(
-                                    titulo=titulo,
-                                    link=link,
-                                    resumo=resumo_limpo if resumo_limpo else "Clique no link para ler a matéria completa.",
-                                    data_publicacao=pub_date[:16] if pub_date else "Recente",
-                                    fonte=nome_fonte
-                                )
+                root = ET.fromstring(response.content)
+                for item in root.findall(".//item"):
+                    titulo = _texto(item, "title")
+                    link = _texto(item, "link", "#")
+                    pub_date = _texto(item, "pubDate")
+                    resumo_limpo = limpar_html(_texto(item, "description"))
+
+                    texto_analise = f"{titulo} {resumo_limpo}".lower()
+                    if titulo and (any(p in texto_analise for p in palavras_chave) or "google" in nome_fonte.lower()):
+                        noticias.append(
+                            Noticia(
+                                titulo=titulo,
+                                link=link,
+                                resumo=resumo_limpo or "Clique no link para ler a matéria completa.",
+                                data_publicacao=pub_date[:16] if pub_date else "Recente",
+                                fonte=nome_fonte,
                             )
-                        if len(noticias) >= limite:
-                            break
+                        )
+                        coletadas += 1
+                    if coletadas >= por_feed:
+                        break
             except Exception as e:
                 print(f"Erro ao carregar feed {nome_fonte}: {e}")
-                
-            if len(noticias) >= limite:
-                break
-                
-    return noticias
+
+    return noticias[:limite]

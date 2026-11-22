@@ -1,5 +1,15 @@
+# Arquivos locais
 OllamaSetup.txt
 gsk.txt
 iniciar.txt
 *.exe
-*/
+
+# Segredos (NUNCA suba para o GitHub)
+.streamlit/secrets.toml
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
